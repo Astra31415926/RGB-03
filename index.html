@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>RGB QR Scanner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #07070c;
+            --surface: #0d0d15;
+            --card: #111119;
+            --border: #1a1a2a;
+            --fg: #e2e2ee;
+            --muted: #585870;
+            --r: #ff3b3b;
+            --r-bg: rgba(255,59,59,0.07);
+            --r-border: rgba(255,59,59,0.28);
+            --g: #22e85c;
+            --g-bg: rgba(34,232,92,0.07);
+            --g-border: rgba(34,232,92,0.28);
+            --b: #3b8bff;
+            --b-bg: rgba(59,139,255,0.07);
+            --b-border: rgba(59,139,255,0.28);
+            --radius: 14px;
+            --radius-sm: 8px;
+        }
+
+        html { font-size: 16px; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            min-height: 100dvh;
+            display: flex;
+            justify-content: center;
+            overflow-x: hidden;
+            background-image:
+                radial-gradient(ellipse at 15% -5%, rgba(255,59,59,0.045) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% -5%, rgba(59,139,255,0.045) 0%, transparent 55%),
+                radial-gradient(ellipse at 50% 105%, rgba(34,232,92,0.03) 0%, transparent 50%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 520px;
+            padding: 20px 14px 48px;
+        }
+
+        /* === Заголовок === */
+        header { text-align: center; margin-bottom: 24px; }
+
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1.65rem;
+            letter-spacing: -0.03em;
+            background: linear-gradient(100deg, var(--r) 0%, var(--g) 50%, var(--b) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            font-size: 0.82rem;
+            margin-top: 5px;
+            letter-spacing: 0.01em;
+        }
+
+        /* === Статус === */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 8px;
+            font-size: 0.76rem;
+            color: var(--muted);
+            padding: 0 2px;
+        }
+
+        .status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--muted);
+            flex-shrink: 0;
+            transition: background 0.35s;
+        }
+        .status-dot.active {
+            background: var(--g);
+            box-shadow: 0 0 8px rgba(34,232,92,0.55);
+            animation: dotPulse 2s ease-in-out infinite;
+        }
+        .status-dot.error { background: var(--r); }
+
+        @keyframes dotPulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.35; }
+        }
+
+        /* === Скайнер === */
+        .scanner-wrap {
+            position: relative;
+            border-radius: var(--radius);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            background: #000;
+            transition: box-shadow 0.45s ease;
+        }
+        .scanner-wrap.glow-r { box-shadow: 0 0 36px rgba(255,59,59,0.18), inset 0 0 24px rgba(255,59,59,0.04); }
+        .scanner-wrap.glow-g { box-shadow: 0 0 36px rgba(34,232,92,0.18), inset 0 0 24px rgba(34,232,92,0.04); }
+        .scanner-wrap.glow-b { box-shadow: 0 0 36px rgba(59,139,255,0.18), inset 0 0 24px rgba(59,139,255,0.04); }
+        .scanner-wrap.glow-multi { box-shadow: 0 0 36px rgba(255,255,255,0.1), inset 0 0 20px rgba(255,255,255,0.02); }
+
+        #display { display: block; width: 100%; height: auto; }
+
+        .error-overlay {
+            position: absolute; inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface);
+            padding: 28px;
+            text-align: center;
+            gap: 10px;
+            z-index: 2;
+        }
+        .error-overlay.visible { display: flex; }
+        .error-overlay .err-icon { font-size: 2.2rem; opacity: 0.45; }
+        .error-overlay .err-msg {
+            color: var(--muted);
+            font-size: 0.85rem;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+
+        /* === Кнопки === */
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+            justify-content: center;
+        }
+
+        .btn {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 0.82rem;
+            padding: 8px 18px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--card);
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.18s ease;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn:hover { background: var(--surface); color: var(--fg); }
+        .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+        .btn:active { transform: scale(0.96); }
+
+        .btn.active { color: var(--fg); }
+        .btn-color.active { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.07); }
+        .btn-r.active { border-color: var(--r-border); background: var(--r-bg); color: var(--r); }
+        .btn-g.active { border-color: var(--g-border); background: var(--g-bg); color: var(--g); }
+        .btn-b.active { border-color: var(--b-border); background: var(--b-bg); color: var(--b); }
+
+        /* === Результаты === */
+        .results {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 18px;
+        }
+
+        .result-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 13px 12px;
+            transition: border-color 0.35s, background 0.35s, transform 0.25s;
+            min-height: 88px;
+            display: flex;
+            flex-direction: column;
+        }
+        .result-card.pop { transform: scale(1.03); }
+
+        .r-card.found { border-color: var(--r-border); background: var(--r-bg); }
+        .g-card.found { border-color: var(--g-border); background: var(--g-bg); }
+        .b-card.found { border-color: var(--b-border); background: var(--b-bg); }
+
+        .result-header {
+            display: flex; align-items: center; gap: 6px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600; font-size: 0.78rem;
+            margin-bottom: 8px; color: var(--muted);
+        }
+        .r-card .result-header { color: var(--r); }
+        .g-card .result-header { color: var(--g); }
+        .b-card .result-header { color: var(--b); }
+
+        .ch-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .ch-dot-r { background: var(--r); }
+        .ch-dot-g { background: var(--g); }
+        .ch-dot-b { background: var(--b); }
+
+        .result-value {
+            font-size: 0.75rem;
+            color: var(--muted);
+            word-break: break-all;
+            line-height: 1.45;
+            flex: 1;
+            transition: color 0.3s;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+        }
+        .result-card.found .result-value { color: var(--fg); }
+
+        /* === Лучший канал === */
+        .best-box {
+            margin-top: 14px;
+            padding: 12px 16px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            text-align: center;
+            font-size: 0.84rem;
+            animation: slideUp 0.3s ease;
+        }
+        .best-box.hidden { display: none; }
+
+        .best-label { color: var(--muted); }
+        .best-ch {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            margin-left: 6px;
+        }
+        .best-ch.r { color: var(--r); }
+        .best-ch.g { color: var(--g); }
+        .best-ch.b { color: var(--b); }
+        .best-data {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.78rem;
+            color: var(--fg);
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* === Порог === */
+        .threshold-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 14px;
+            font-size: 0.76rem;
+            color: var(--muted);
+        }
+        .threshold-row label { cursor: pointer; display: flex; align-items: center; gap: 5px; }
+        .threshold-row input[type="range"] {
+            width: 120px;
+            accent-color: var(--g);
+            cursor: pointer;
+        }
+        .threshold-val {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            min-width: 28px;
+            text-align: center;
+            color: var(--fg);
+        }
+
+        /* === Reduced motion === */
+        @media (prefers-reduced-motion: reduce) {
+            .status-dot.active { animation: none; }
+            .result-card, .scanner-wrap { transition: none; }
+            @keyframes slideUp { from { opacity: 1; transform: none; } }
+        }
+
+        /* === Мобильные === */
+        @media (max-width: 400px) {
+            h1 { font-size: 1.35rem; }
+            .btn { padding: 7px 13px; font-size: 0.78rem; }
+            .result-card { padding: 10px 9px; min-height: 76px; }
+            .result-value { font-size: 0.7rem; -webkit-line-clamp: 3; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>RGB QR Scanner</h1>
+            <p class="subtitle">Один поток — три независимых канала — три попытки декодирования</p>
+        </header>
+
+        <div class="scanner-wrap" id="scannerWrap">
+            <div class="status-bar">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Инициализация камеры...</span>
+            </div>
+            <canvas id="display" width="640" height="480"></canvas>
+            <div class="error-overlay" id="errorOverlay">
+                <span class="err-icon">&#x1f4f7;</span>
+                <span class="err-msg" id="errMsg"></span>
+            </div>
+        </div>
+
+        <nav class="controls" aria-label="Режим отображения канала">
+            <button class="btn btn-color active" data-mode="color" aria-pressed="true">Color</button>
+            <button class="btn btn-r" data-mode="r" aria-pressed="false">R</button>
+            <button class="btn btn-g" data-mode="g" aria-pressed="false">G</button>
+            <button class="btn btn-b" data-mode="b" aria-pressed="false">B</button>
+        </nav>
+
+        <div class="threshold-row">
+            <label>Порог: <input type="range" id="thresholdSlider" min="30" max="225" value="128"></label>
+            <span class="threshold-val" id="thresholdVal">128</span>
+        </div>
+
+        <section class="results" role="region" aria-label="Результаты сканирования по каналам">
+            <div class="result-card r-card" id="card-r">
+                <div class="result-header"><span class="ch-dot ch-dot-r"></span><span>Red</span></div>
+                <div class="result-value" id="result-r">...</div>
+            </div>
+            <div class="result-card g-card" id="card-g">
+                <div class="result-header"><span class="ch-dot ch-dot-g"></span><span>Green</span></div>
+                <div class="result-value" id="result-g">...</div>
+            </div>
+            <div class="result-card b-card" id="card-b">
+                <div class="result-header"><span class="ch-dot ch-dot-b"></span><span>Blue</span></div>
+                <div class="result-value" id="result-b">...</div>
+            </div>
+        </section>
+
+        <div class="best-box hidden" id="bestBox">
+            <span class="best-label">Лучший канал:</span>
+            <span class="best-ch" id="bestCh"></span>
+            <span class="best-data" id="bestData"></span>
+        </div>
+    </div>
+
+    <video id="video" style="display:none" playsinline autoplay muted></video>
+
+    <script>
+    (function () {
+        'use strict';
+
+        /* ==============================
+           DOM-элементы
+           ============================== */
+        var video       = document.getElementById('video');
+        var displayCvs  = document.getElementById('display');
+        var displayCtx  = displayCvs.getContext('2d', { willReadFrequently: false });
+        var scannerWrap = document.getElementById('scannerWrap');
+        var statusDot   = document.getElementById('statusDot');
+        var statusText  = document.getElementById('statusText');
+        var errOverlay  = document.getElementById('errorOverlay');
+        var errMsg      = document.getElementById('errMsg');
+        var bestBox     = document.getElementById('bestBox');
+        var bestCh      = document.getElementById('bestCh');
+        var bestData    = document.getElementById('bestData');
+        var threshSlider = document.getElementById('thresholdSlider');
+        var threshVal   = document.getElementById('thresholdVal');
+
+        /* ==============================
+           Состояние приложения
+           ============================== */
+        var displayMode    = 'color';   // 'color' | 'r' | 'g' | 'b'
+        var threshold      = 128;       // порог бинаризации
+        var processingTimer = null;
+        var audioCtx       = null;
+        var scanLineY      = 0;
+        var reducedMotion  = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Результаты предыдущего кадра
+        var prevResults = { r: null, g: null, b: null };
+        // Локации QR-кодов для отрисовки рамок
+        var qrLocations = { r: null, g: null, b: null };
+
+        // Размеры canvas (устанавливаются при загрузке видео)
+        var dispW = 640, dispH = 480;
+        var anW = 400, anH = 300;
+        var scX = 1, scY = 1;
+
+        /* ==============================
+           Offscreen canvas'ы
+           ============================== */
+        var anCvs = document.createElement('canvas');
+        var anCtx = anCvs.getContext('2d', { willReadFrequently: true });
+
+        var chRCvs = document.createElement('canvas');
+        var chRCtx = chRCvs.getContext('2d');
+        var chGCvs = document.createElement('canvas');
+        var chGCtx = chGCvs.getContext('2d');
+        var chBCvs = document.createElement('canvas');
+        var chBCtx = chBCvs.getContext('2d');
+
+        /* ==============================
+           Буферы пиксельных данных
+           Выделяются один раз, переиспользуются
+           ============================== */
+        var rGray, gGray, bGray;   // грейскейл-каналы (для отображения)
+        var rBin, gBin, bBin;      // бинаризированные (для jsQR)
+        var rGrayImg, gGrayImg, bGrayImg; // ImageData-обёртки
+
+        function initBuffers() {
+            var sz = anW * anH * 4;
+            rGray = new Uint8ClampedArray(sz);
+            gGray = new Uint8ClampedArray(sz);
+            bGray = new Uint8ClampedArray(sz);
+            rBin  = new Uint8ClampedArray(sz);
+            gBin  = new Uint8ClampedArray(sz);
+            bBin  = new Uint8ClampedArray(sz);
+
+            // ImageData поверх буферов (не копирует, а обёртывает)
+            rGrayImg = new ImageData(rGray, anW, anH);
+            gGrayImg = new ImageData(gGray, anW, anH);
+            bGrayImg = new ImageData(bGray, anW, anH);
+
+            chRCvs.width = anW;  chRCvs.height = anH;
+            chGCvs.width = anW;  chGCvs.height = anH;
+            chBCvs.width = anW;  chBCvs.height = anH;
+
+            scX = dispW / anW;
+            scY = dispH / anH;
+        }
+
+        /* ==============================
+           Камера
+           ============================== */
+        function startCamera() {
+            // Проверка наличия jsQR
+            if (typeof jsQR !== 'function') {
+                showError('Библиотека jsQR не загружена.\nПроверьте интернет-соединение и перезагрузите страницу.');
+                return;
+            }
+            statusText.textContent = 'Запрос доступа к камере...';
+
+            navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            }).then(function (stream) {
+                video.srcObject = stream;
+                video.play().then(function () {
+                    onVideoReady();
+                }).catch(function () {
+                    // Попытка после autoplay
+                    onVideoReady();
+                });
+            }).catch(function (err) {
+                showError('Не удалось получить доступ к камере.\n' + err.message);
+            });
+        }
+
+        function onVideoReady() {
+            var vw = video.videoWidth;
+            var vh = video.videoHeight;
+            if (!vw || !vh) {
+                // Видео ещё не готово — ждём событие
+                if (video.readyState >= 2) {
+                    vw = video.videoWidth;
+                    vh = video.videoHeight;
+                } else {
+                    video.addEventListener('loadeddata', function handler() {
+                        video.removeEventListener('loadeddata', handler);
+                        onVideoReady();
+                    });
+                    return;
+                }
+            }
+
+            // Display canvas — до 640px шириной
+            dispW = Math.min(640, vw);
+            dispH = Math.round(dispW * vh / vw);
+            displayCvs.width = dispW;
+            displayCvs.height = dispH;
+
+            // Analysis canvas — до 400px шириной (для скорости)
+            anW = Math.min(400, vw);
+            anH = Math.round(anW * vh / vw);
+            anCvs.width = anW;
+            anCvs.height = anH;
+
+            initBuffers();
+
+            statusDot.classList.add('active');
+            statusText.textContent = 'Сканирование — 5 к/с';
+
+            // Запуск обработки ~5 fps
+            processingTimer = setInterval(processFrame, 200);
+        }
+
+        function showError(msg) {
+            statusDot.classList.add('error');
+            statusText.textContent = 'Ошибка';
+            errOverlay.classList.add('visible');
+            errMsg.textContent = msg;
+            displayCvs.style.display = 'none';
+        }
+
+        /* ==============================
+           Основной цикл обработки
+           ============================== */
+        function processFrame() {
+            // 1. Захват кадра в уменьшенный offscreen canvas
+            anCtx.drawImage(video, 0, 0, anW, anH);
+            var imgData = anCtx.getImageData(0, 0, anW, anH);
+            var px = imgData.data;
+            var len = px.length;
+            var th = threshold;
+
+            // 2. Разделение на каналы + бинаризация — один проход по пикселям
+            for (var i = 0; i < len; i += 4) {
+                var r = px[i];
+                var g = px[i + 1];
+                var b = px[i + 2];
+
+                // Грейскейл-каналы (для отображения на canvas)
+                rGray[i] = r; rGray[i+1] = r; rGray[i+2] = r; rGray[i+3] = 255;
+                gGray[i] = g; gGray[i+1] = g; gGray[i+2] = g; gGray[i+3] = 255;
+                bGray[i] = b; bGray[i+1] = b; bGray[i+2] = b; bGray[i+3] = 255;
+
+                // Бинаризация (для декодирования QR)
+                var rv = r > th ? 255 : 0;
+                var gv = g > th ? 255 : 0;
+                var bv = b > th ? 255 : 0;
+                rBin[i] = rv; rBin[i+1] = rv; rBin[i+2] = rv; rBin[i+3] = 255;
+                gBin[i] = gv; gBin[i+1] = gv; gBin[i+2] = gv; gBin[i+3] = 255;
+                bBin[i] = bv; bBin[i+1] = bv; bBin[i+2] = bv; bBin[i+3] = 255;
+            }
+
+            // 3. Отрисовка каналов на offscreen canvas'ах
+            chRCtx.putImageData(rGrayImg, 0, 0);
+            chGCtx.putImageData(gGrayImg, 0, 0);
+            chBCtx.putImageData(bGrayImg, 0, 0);
+
+            // 4. Независимое декодирование QR из каждого канала
+            var rRes = jsQR(rBin, anW, anH);
+            var gRes = jsQR(gBin, anW, anH);
+            var bRes = jsQR(bBin, anW, anH);
+
+            // 5. Сохраняем локации для отрисовки рамок
+            qrLocations.r = rRes ? rRes.location : null;
+            qrLocations.g = gRes ? gRes.location : null;
+            qrLocations.b = bRes ? bRes.location : null;
+
+            // 6. Обновление UI результатов
+            updateResults(rRes, gRes, bRes);
+
+            // 7. Рендер на основном canvas
+            renderDisplay();
+        }
+
+        /* ==============================
+           Обновление результатов в DOM
+           ============================== */
+        function updateResults(rRes, gRes, bRes) {
+            var results = {
+                r: rRes ? rRes.data : null,
+                g: gRes ? gRes.data : null,
+                b: bRes ? bRes.data : null
+            };
+
+            var hasNew = false;
+            var foundArr = [];
+
+            var channels = ['r', 'g', 'b'];
+            for (var ci = 0; ci < 3; ci++) {
+                var ch = channels[ci];
+                var el = document.getElementById('result-' + ch);
+                var card = document.getElementById('card-' + ch);
+
+                if (results[ch]) {
+                    foundArr.push(ch);
+                    if (prevResults[ch] !== results[ch]) {
+                        el.textContent = results[ch];
+                        card.classList.add('found');
+                        // Микро-анимация «pop»
+                        card.classList.remove('pop');
+                        void card.offsetWidth; // reflow
+                        card.classList.add('pop');
+                        setTimeout(function (c) { return function () { c.classList.remove('pop'); }; }(card), 280);
+                        hasNew = true;
+                    }
+                } else {
+                    el.textContent = '...';
+                    card.classList.remove('found', 'pop');
+                }
+            }
+
+            // Звук при новых обнаружениях
+            if (hasNew) playBeep();
+
+            // «Лучший канал»
+            if (foundArr.length > 0) {
+                var best = foundArr[0]; // приоритет R > G > B
+                var names = { r: 'Red', g: 'Green', b: 'Blue' };
+                bestCh.textContent = names[best];
+                bestCh.className = 'best-ch ' + best;
+                bestData.textContent = results[best];
+                bestBox.classList.remove('hidden');
+
+                // Подсветка canvas
+                if (foundArr.length > 1) {
+                    scannerWrap.className = 'scanner-wrap glow-multi';
+                } else {
+                    scannerWrap.className = 'scanner-wrap glow-' + best;
+                }
+            } else {
+                bestBox.classList.add('hidden');
+                scannerWrap.className = 'scanner-wrap';
+            }
+
+            prevResults.r = results.r;
+            prevResults.g = results.g;
+            prevResults.b = results.b;
+        }
+
+        /* ==============================
+           Рендер на основном canvas
+           ============================== */
+        function renderDisplay() {
+            displayCtx.fillStyle = '#000';
+            displayCtx.fillRect(0, 0, dispW, dispH);
+
+            // Выбор источника изображения
+            var src;
+            switch (displayMode) {
+                case 'r': src = chRCvs; break;
+                case 'g': src = chGCvs; break;
+                case 'b': src = chBCvs; break;
+                default:  src = video;
+            }
+            displayCtx.drawImage(src, 0, 0, dispW, dispH);
+
+            // Уголковые метки сканирования
+            drawCornerBrackets();
+
+            // Рамки найденных QR-кодов
+            var colors = { r: '#ff3b3b', g: '#22e85c', b: '#3b8bff' };
+            for (var ch in qrLocations) {
+                if (qrLocations[ch]) {
+                    drawQRFrame(qrLocations[ch], colors[ch]);
+                }
+            }
+
+            // Сканирующая линия
+            if (!reducedMotion) drawScanLine();
+        }
+
+        /* Уголковые скобки — зона сканирования */
+        function drawCornerBrackets() {
+            var mx = Math.round(dispW * 0.08);
+            var my = Math.round(dispH * 0.08);
+            var sz = Math.round(Math.min(dispW, dispH) * 0.06);
+            var lw = 2;
+            var al = 0.28;
+
+            displayCtx.strokeStyle = 'rgba(255,255,255,' + al + ')';
+            displayCtx.lineWidth = lw;
+            displayCtx.lineCap = 'round';
+
+            // ВЛ
+            displayCtx.beginPath();
+            displayCtx.moveTo(mx, my + sz);
+            displayCtx.lineTo(mx, my);
+            displayCtx.lineTo(mx + sz, my);
+            displayCtx.stroke();
+            // ВП
+            displayCtx.beginPath();
+            displayCtx.moveTo(dispW - mx - sz, my);
+            displayCtx.lineTo(dispW - mx, my);
+            displayCtx.lineTo(dispW - mx, my + sz);
+            displayCtx.stroke();
+            // НЛ
+            displayCtx.beginPath();
+            displayCtx.moveTo(mx, dispH - my - sz);
+            displayCtx.lineTo(mx, dispH - my);
+            displayCtx.lineTo(mx + sz, dispH - my);
+            displayCtx.stroke();
+            // НП
+            displayCtx.beginPath();
+            displayCtx.moveTo(dispW - mx - sz, dispH - my);
+            displayCtx.lineTo(dispW - mx, dispH - my);
+            displayCtx.lineTo(dispW - mx, dispH - my - sz);
+            displayCtx.stroke();
+        }
+
+        /* Рамка QR-кода с glow */
+        function drawQRFrame(loc, color) {
+            displayCtx.save();
+            displayCtx.strokeStyle = color;
+            displayCtx.lineWidth = 3;
+            displayCtx.lineJoin = 'round';
+            displayCtx.shadowColor = color;
+            displayCtx.shadowBlur = 10;
+
+            displayCtx.beginPath();
+            displayCtx.moveTo(loc.topLeftCorner.x * scX, loc.topLeftCorner.y * scY);
+            displayCtx.lineTo(loc.topRightCorner.x * scX, loc.topRightCorner.y * scY);
+            displayCtx.lineTo(loc.bottomRightCorner.x * scX, loc.bottomRightCorner.y * scY);
+            displayCtx.lineTo(loc.bottomLeftCorner.x * scX, loc.bottomLeftCorner.y * scY);
+            displayCtx.closePath();
+            displayCtx.stroke();
+            displayCtx.restore();
+        }
+
+        /* Анимированная сканирующая линия */
+        function drawScanLine() {
+            scanLineY = (scanLineY + 10) % dispH;
+            var half = 28;
+            var grad = displayCtx.createLinearGradient(0, scanLineY - half, 0, scanLineY + half);
+            grad.addColorStop(0, 'rgba(255,255,255,0)');
+            grad.addColorStop(0.5, 'rgba(255,255,255,0.12)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            displayCtx.fillStyle = grad;
+            displayCtx.fillRect(0, scanLineY - half, dispW, half * 2);
+        }
+
+        /* ==============================
+           Звук при обнаружении
+           ============================== */
+        function playBeep() {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                var osc = audioCtx.createOscillator();
+                var gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1046.5, audioCtx.currentTime); // C6
+                osc.frequency.setValueAtTime(1318.5, audioCtx.currentTime + 0.06); // E6
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.14);
+                osc.start(audioCtx.currentTime);
+                osc.stop(audioCtx.currentTime + 0.14);
+            } catch (_) { /* звук не критичен */ }
+        }
+
+        /* ==============================
+           Управление кнопками
+           ============================== */
+        var btns = document.querySelectorAll('.btn');
+        for (var bi = 0; bi < btns.length; bi++) {
+            btns[bi].addEventListener('click', function () {
+                displayMode = this.dataset.mode;
+                for (var j = 0; j < btns.length; j++) {
+                    btns[j].classList.remove('active');
+                    btns[j].setAttribute('aria-pressed', 'false');
+                }
+                this.classList.add('active');
+                this.setAttribute('aria-pressed', 'true');
+            });
+        }
+
+        /* ==============================
+           Слайдер порога бинаризации
+           ============================== */
+        threshSlider.addEventListener('input', function () {
+            threshold = parseInt(this.value, 10);
+            threshVal.textContent = threshold;
+        });
+
+        /* ==============================
+           Запуск
+           ============================== */
+        startCamera();
+    })();
+    </script>
+</body>
+</html>
